@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 require("dotenv").config({ override: true });
 
+// 필요한 모듈들을 임포트합니다.
 import chalk from "chalk";
 import { exec } from "child_process";
 import { Command } from "commander";
@@ -8,20 +9,22 @@ import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
 
+// exec 함수를 프로미스 기반으로 변환합니다.
 const execAsync = promisify(exec);
 
+// Commander를 사용하여 CLI 프로그램을 설정합니다.
 const program = new Command();
 
-// Configuration
+// 설정 객체: 프로젝트 ID, 프리셋 해시, API 키, 검사할 파일 확장자를 정의합니다.
 const config = {
   LAAS_PROJECT_ID: "CODE_REVIEW",
   LAAS_PRESET_HASH:
     "bccba97727f96c00088e312955948fbdb81316791e250a478536ad42d425bebb",
   LAAS_API_KEY: process.env["LAAS_API_KEY"],
-  FILE_EXTENSIONS: [".ts", ".tsx"], // Configurable file extensions
+  FILE_EXTENSIONS: [".ts", ".tsx"], // 검사할 파일 확장자 목록
 };
 
-// Validate environment variables at startup
+// 환경 변수 검증: API 키가 설정되어 있지 않으면 에러를 출력하고 프로그램을 종료합니다.
 if (!config.LAAS_API_KEY) {
   console.error(
     chalk.red(
@@ -31,13 +34,15 @@ if (!config.LAAS_API_KEY) {
   process.exit(1);
 }
 
+// 명령어 실행 결과의 인터페이스를 정의합니다.
 interface CommandResult {
   stdout: string;
   stderr: string;
 }
 
-// Git utilities
+// Git 관련 유틸리티 함수들을 객체로 그룹화합니다.
 const gitUtils = {
+  // Git 명령어를 실행하고 결과를 반환하는 함수
   async runCommand(command: string): Promise<string> {
     try {
       const { stdout }: CommandResult = await execAsync(command);
@@ -49,6 +54,7 @@ const gitUtils = {
     }
   },
 
+  // 현재 커밋에서 변경된 파일 목록을 가져오는 함수
   async getChangedFiles(): Promise<string[]> {
     const output = await this.runCommand(
       'git diff --cached --name-only HEAD --diff-filter=ACM'
@@ -57,10 +63,12 @@ const gitUtils = {
       .filter(file => config.FILE_EXTENSIONS.some(ext => file.endsWith(ext)));
   },
 
+  // Git 저장소의 루트 경로를 가져오는 함수
   getGitRootPath(): Promise<string> {
     return this.runCommand("git rev-parse --show-toplevel");
   },
 
+  // 특정 파일의 전체 내용과 변경된 내용을 가져오는 함수
   async getFileContent(
     gitRootPath: string,
     file: string,
@@ -76,8 +84,9 @@ const gitUtils = {
   },
 };
 
-// LAAS API module
+// LAAS API 관련 함수들을 객체로 그룹화합니다.
 const laasApi = {
+  // AI 리뷰를 생성하는 함수
   async generateAIReview(
     fullContent: string,
     changedContent: string,
@@ -114,6 +123,7 @@ const laasApi = {
   },
 };
 
+// 개별 파일을 처리하는 함수
 async function processFile(gitRootPath: string, file: string): Promise<void> {
   try {
     console.log(chalk.yellow(`# Processing file: ${file}`));
@@ -128,6 +138,7 @@ async function processFile(gitRootPath: string, file: string): Promise<void> {
   }
 }
 
+// 메인 코드 리뷰 함수
 async function codeReview(): Promise<void> {
   try {
     const gitRootPath = await gitUtils.getGitRootPath();
@@ -139,9 +150,9 @@ async function codeReview(): Promise<void> {
     }
 
     console.log(chalk.blue("Changed files in the current commit:"));
-    changedFiles.forEach(file => console.log(chalk.yellow(`# Review file: ${file}`)));
+    changedFiles.forEach(file => console.log(chalk.yellow(`- ${file}`)));
 
-    // Process files in parallel
+    // 파일들을 병렬로 처리합니다.
     await Promise.all(changedFiles.map(file => processFile(gitRootPath, file)));
   } catch (error) {
     console.error(
@@ -152,9 +163,11 @@ async function codeReview(): Promise<void> {
   }
 }
 
+// CLI 프로그램 설정
 program
   .version("1.0.0")
   .description("AI Code Review CLI tool")
   .action(() => codeReview());
 
+// 명령행 인자를 파싱하고 프로그램을 실행합니다.
 program.parse(process.argv);
