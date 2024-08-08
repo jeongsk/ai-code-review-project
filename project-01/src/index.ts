@@ -33,11 +33,17 @@ async function runCommand(command: string): Promise<string> {
   }
 }
 
-async function getChangedFiles(): Promise<string[]> {
+async function getChangedFiles(filter?: (file: string) => boolean): Promise<string[]> {
   const output = await runCommand(
-    'git diff --cached --name-only HEAD --diff-filter=ACM | grep ".tsx\\?$"',
+    'git diff --cached --name-only HEAD --diff-filter=ACM'
   );
-  return output.split("\n").filter(Boolean);
+  const files = output.split("\n").filter(Boolean);
+
+  if (filter && typeof filter === 'function') {
+    return files.filter(filter);
+  }
+
+  return files;
 }
 
 async function readFile(filePath: string): Promise<string> {
@@ -114,7 +120,7 @@ async function codeReview(): Promise<void> {
     }
 
     const gitRootPath = await getGitRootPath();
-    const changedFiles = await getChangedFiles();
+    const changedFiles = await getChangedFiles(file => /\.(ts|tsx)$/.test(file));
 
     if (changedFiles.length === 0) {
       console.log(chalk.yellow("No changed files in the current commit."));
@@ -123,24 +129,17 @@ async function codeReview(): Promise<void> {
 
     console.log(chalk.blue("Changed files in the current commit:"));
     for (const file of changedFiles) {
-      console.log(chalk.yellow(`- ${file}`));
+      console.log(chalk.yellow(`-> ${file}`));
 
       try {
-        const { fullContent, changedContent } = await getFileContent(
-          gitRootPath,
-          file,
-        );
+        const { fullContent, changedContent } = await getFileContent(gitRootPath, file);
         if (fullContent && changedContent) {
           const review = await generateAIReview(fullContent, changedContent);
           console.log(chalk.green(`AI Code Review for ${file}:`));
           console.log(review);
         }
       } catch (error) {
-        console.error(
-          chalk.red(
-            `Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
+        console.error(chalk.red(`Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`));
       }
     }
   } catch (error) {
