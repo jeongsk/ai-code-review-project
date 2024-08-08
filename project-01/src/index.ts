@@ -93,6 +93,8 @@ const laasApi = {
   ): Promise<string> {
     const body = {
       hash: config.LAAS_PRESET_HASH,
+      service_type: "AWS",
+      model: "claude-3.5-sonnet",
       params: {
         full_content: fullContent,
         changed_content: changedContent,
