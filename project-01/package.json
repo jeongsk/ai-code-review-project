@@ -16,7 +16,9 @@
   "packageManager": "pnpm@9.4.0+sha1.9217c800d4ab947a7aee520242a7b70d64fc7638",
   "dependencies": {
     "chalk": "^5.3.0",
-    "commander": "^12.1.0"
+    "child_process": "^1.0.2",
+    "commander": "^12.1.0",
+    "util": "^0.12.5"
   },
   "devDependencies": {
     "@types/node": "^22.1.0",
