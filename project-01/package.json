@@ -7,8 +7,8 @@
     "code-review": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc -noEmit -skipLibCheck && node build.mjs",
-    "dev": "ts-node src/index.ts"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs && node dist/index.js"
   },
   "keywords": [],
   "author": "",
