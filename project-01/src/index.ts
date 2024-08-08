@@ -1,15 +1,20 @@
 #!/usr/bin/env node
+require('dotenv').config({ override: true });
 
-import { Command } from 'commander';
 import chalk from 'chalk';
 import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
+import { Command } from 'commander';
 import fs from 'fs/promises';
+import path from 'path';
+import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
 const program = new Command();
+
+const LAAS_PROJECT_ID = "CODE_REVIEW"
+const LAAS_PRESET_HASH = "bccba97727f96c00088e312955948fbdb81316791e250a478536ad42d425bebb"
+const LAAS_API_KEY = process.env['LAAS_API_KEY']
 
 interface CommandResult {
   stdout: string;
@@ -53,6 +58,39 @@ async function getFileContent(gitRootPath: string, file: string): Promise<{ full
   return { fullContent, changedContent };
 }
 
+async function generateAIReview(fullContent: string, changedContent: string): Promise<string> {
+  const body = {
+    hash: LAAS_PRESET_HASH,
+    params: {
+      full_content: fullContent,
+      changed_content: changedContent,
+    },
+  }
+  try {
+    const response = await fetch("https://api-laas.wanted.co.kr/api/preset/chat/completions", {
+      method: 'POST',
+      headers: {
+      'content-type': 'application/json',
+      'project': LAAS_PROJECT_ID,
+      'apiKey': LAAS_API_KEY ?? ''
+    } as HeadersInit,
+      body: JSON.stringify(body),
+    })
+      .then(r => r.json())
+    if ('error' in response) {
+      throw new Error(response.message);
+    }
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error(error);
+    if (error instanceof Error) {
+      throw new Error(error.message);
+    } else {
+      throw new Error(String(error));
+    }
+  }
+}
+
 async function codeReview(): Promise<void> {
   const gitRootPath = await getGitRootPath();
   const changedFiles = await getChangedFiles();
@@ -67,11 +105,11 @@ async function codeReview(): Promise<void> {
     console.log(chalk.yellow(`- ${file}`));
 
     const { fullContent, changedContent } = await getFileContent(gitRootPath, file);
-
     if (fullContent && changedContent) {
-      const truncatedContent = changedContent.length > 100 ? `${changedContent.slice(0, 100)}...` : changedContent;
-      console.log(chalk.yellow(`- ${truncatedContent}`));
-      // TODO: LaaS API 호출
+      // LaaS API 호출
+      const review = await generateAIReview(fullContent, changedContent);
+      console.log(chalk.green(`AI Code Review for ${file}:`));
+      console.log(review);
     }
   }
 }
