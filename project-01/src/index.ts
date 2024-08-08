@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-require("dotenv").config({ override: true });
+require("dotenv").config({ path: ['.env.local', '.env'], override: true });
 
 // 필요한 모듈들을 임포트합니다.
 import chalk from "chalk";
