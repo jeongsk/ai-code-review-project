@@ -24,6 +24,16 @@
     npm install -g .
     ```
 
+4. LAAS_API_KEY 설정:
+   - `.env` 또는 `.env.local` 파일을 프로젝트 루트 디렉토리에 생성합니다.
+   - 파일에 다음 내용을 추가합니다:
+
+     ```
+     LAAS_API_KEY=your_api_key_here
+     ```
+
+   - `your_api_key_here`를 실제 LAAS API 키로 교체하세요.
+
 ## 사용 방법
 
 이제 코드 리뷰를 받고 싶은 파일을 준비해봅시다.
