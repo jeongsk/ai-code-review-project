@@ -16,12 +16,14 @@
   "packageManager": "pnpm@9.4.0+sha1.9217c800d4ab947a7aee520242a7b70d64fc7638",
   "dependencies": {
     "@langchain/core": "^0.2.21",
+    "@langchain/ollama": "^0.0.4",
     "axios": "^1.7.3",
     "chalk": "^5.3.0",
     "child_process": "^1.0.2",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "langchain": "^0.2.13",
+    "ollama": "^0.5.6",
     "util": "^0.12.5"
   },
   "devDependencies": {
