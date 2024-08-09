@@ -8,9 +8,17 @@ import { Command } from "commander";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
-import { OllamaEmbeddings } from "@langchain/ollama";
 import ollama from "ollama";
 import axios from "axios";
+
+import { OllamaEmbeddings } from "@langchain/ollama";
+import { DirectoryLoader } from "langchain/document_loaders/fs/directory";
+import {
+  JSONLoader,
+  JSONLinesLoader,
+} from "langchain/document_loaders/fs/json";
+import { TextLoader } from "langchain/document_loaders/fs/text";
+import { MyDirectoryLoader } from "./document_loaders/my_directory_loaders";
 
 // exec 함수를 프로미스 기반으로 변환합니다.
 const execAsync = promisify(exec);
@@ -198,6 +206,17 @@ async function codeReview(): Promise<void> {
     console.log("gitRootPath", gitRootPath);
 
     const embeddings = checkOllamaAndModel();
+
+    const loader = new MyDirectoryLoader(
+      gitRootPath,
+      {
+        ".ts": (filePath) => new TextLoader(filePath),
+        ".tsx": (filePath) => new TextLoader(filePath),
+      },
+      ["**/node_modules", "**/dist", "**/build"],
+    );
+    const documents = await loader.load();
+    console.log(documents.slice(0, 5));
 
     if (changedFiles.length === 0) {
       console.log(
