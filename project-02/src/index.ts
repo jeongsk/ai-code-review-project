@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-require("dotenv").config({ path: ['.env.local', '.env'], override: true });
+require("dotenv").config({ path: [".env.local", ".env"], override: true });
 
 // 필요한 모듈들을 임포트합니다.
 import chalk from "chalk";
@@ -8,6 +8,9 @@ import { Command } from "commander";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
+import { OllamaEmbeddings } from "@langchain/ollama";
+import ollama from "ollama";
+import axios from "axios";
 
 // exec 함수를 프로미스 기반으로 변환합니다.
 const execAsync = promisify(exec);
@@ -27,9 +30,7 @@ const config = {
 // 환경 변수 검증: API 키가 설정되어 있지 않으면 에러를 출력하고 프로그램을 종료합니다.
 if (!config.LAAS_API_KEY) {
   console.error(
-    chalk.red(
-      "Error: LAAS_API_KEY is not set in the environment variables.",
-    ),
+    chalk.red("Error: LAAS_API_KEY is not set in the environment variables."),
   );
   process.exit(1);
 }
@@ -57,10 +58,14 @@ const gitUtils = {
   // 현재 커밋에서 변경된 파일 목록을 가져오는 함수
   async getChangedFiles(): Promise<string[]> {
     const output = await this.runCommand(
-      'git diff --cached --name-only HEAD --diff-filter=ACM'
+      "git diff --cached --name-only HEAD --diff-filter=ACM",
     );
-    return output.split("\n").filter(Boolean)
-      .filter(file => config.FILE_EXTENSIONS.some(ext => file.endsWith(ext)));
+    return output
+      .split("\n")
+      .filter(Boolean)
+      .filter((file) =>
+        config.FILE_EXTENSIONS.some((ext) => file.endsWith(ext)),
+      );
   },
 
   // Git 저장소의 루트 경로를 가져오는 함수
@@ -115,11 +120,11 @@ const laasApi = {
     const data = await response.json();
 
     if (!response.ok || "error" in data) {
-      const status = response.status || data.status || 'Unknown';
-      const message = data.message || 'No error message provided';
+      const status = response.status || data.status || "Unknown";
+      const message = data.message || "No error message provided";
       throw new Error(`API Error: ${status} - ${message}`);
     }
-    console.log(data)
+
     return data.choices[0].message.content;
   },
 };
@@ -128,14 +133,59 @@ const laasApi = {
 async function processFile(gitRootPath: string, file: string): Promise<void> {
   try {
     console.log(chalk.yellow(`# Processing file: ${file}`));
-    const { fullContent, changedContent } = await gitUtils.getFileContent(gitRootPath, file);
+    const { fullContent, changedContent } = await gitUtils.getFileContent(
+      gitRootPath,
+      file,
+    );
     if (fullContent && changedContent) {
-      const review = await laasApi.generateAIReview(fullContent, changedContent);
+      const review = await laasApi.generateAIReview(
+        fullContent,
+        changedContent,
+      );
       console.log(chalk.green(`# AI Code Review for ${file}:`));
       console.log(review);
     }
   } catch (error) {
-    console.error(chalk.red(`Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`));
+    console.error(
+      chalk.red(
+        `Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+  }
+}
+
+async function checkOllamaAndModel() {
+  const baseUrl = "http://localhost:11434";
+  const modelName = "nomic-embed-text:latest";
+
+  try {
+    // Ollama 서버가 실행 중인지 확인
+    const modelsResponse = await axios.get(`${baseUrl}/api/tags`);
+
+    if (modelsResponse.status !== 200) {
+      throw new Error("Ollama 서버가 실행 중이지 않습니다.");
+    }
+
+    // 'nomic-embed-text' 모델이 있는지 확인
+    const models: any[] = modelsResponse.data.models;
+    if (models.findIndex(({ model }) => model === modelName) === -1) {
+      console.log(`'${modelName}' 모델을 다운로드 합니다.`);
+      await ollama.pull({ model: modelName, stream: true });
+    }
+
+    // 모든 조건이 충족되면 embeddings 객체 생성
+    const embeddings = new OllamaEmbeddings({
+      model: modelName,
+      baseUrl: baseUrl,
+    });
+
+    console.log(
+      "Ollama 서버가 실행 중이고, 'nomic-embed-text' 모델이 준비되었습니다.",
+    );
+    return embeddings;
+  } catch (error: any) {
+    console.error("오류 발생:", error.message);
+    return null;
   }
 }
 
@@ -145,16 +195,24 @@ async function codeReview(): Promise<void> {
     const gitRootPath = await gitUtils.getGitRootPath();
     const changedFiles = await gitUtils.getChangedFiles();
 
+    console.log("gitRootPath", gitRootPath);
+
+    const embeddings = checkOllamaAndModel();
+
     if (changedFiles.length === 0) {
-      console.log(chalk.yellow("No changed files matching the specified extensions in the current commit."));
+      console.log(
+        chalk.yellow(
+          "No changed files matching the specified extensions in the current commit.",
+        ),
+      );
       return;
     }
 
     console.log(chalk.blue("Changed files in the current commit:"));
-    changedFiles.forEach(file => console.log(chalk.yellow(`- ${file}`)));
+    changedFiles.forEach((file) => console.log(chalk.yellow(`- ${file}`)));
 
     // 파일들을 병렬로 처리합니다.
-    await Promise.all(changedFiles.map(file => processFile(gitRootPath, file)));
+    // await Promise.all(changedFiles.map(file => processFile(gitRootPath, file)));
   } catch (error) {
     console.error(
       chalk.red(
