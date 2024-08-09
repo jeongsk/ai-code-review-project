@@ -1,4 +1,5 @@
 import esbuild from "esbuild";
+import alias from "esbuild-plugin-alias";
 
 esbuild.build({
   entryPoints: ['src/index.ts'],
@@ -11,4 +12,9 @@ esbuild.build({
   platform: 'node',
   target: 'node20',
   format: 'cjs',
+  plugins: [
+    alias({
+      '@': './src'
+    })
+  ]
 }).catch(() => process.exit(1));
