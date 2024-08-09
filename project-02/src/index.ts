@@ -8,17 +8,10 @@ import { Command } from "commander";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
-import ollama from "ollama";
-import axios from "axios";
 
-import { OllamaEmbeddings } from "@langchain/ollama";
-import { DirectoryLoader } from "langchain/document_loaders/fs/directory";
-import {
-  JSONLoader,
-  JSONLinesLoader,
-} from "langchain/document_loaders/fs/json";
 import { TextLoader } from "langchain/document_loaders/fs/text";
 import { MyDirectoryLoader } from "./document_loaders/my_directory_loaders";
+import checkAndGetOllamaEmbeddingModel from "./helpers/check_n_get_ollama_embedding_model";
 
 // exec 함수를 프로미스 기반으로 변환합니다.
 const execAsync = promisify(exec);
@@ -162,41 +155,6 @@ async function processFile(gitRootPath: string, file: string): Promise<void> {
   }
 }
 
-async function checkOllamaAndModel() {
-  const baseUrl = "http://localhost:11434";
-  const modelName = "nomic-embed-text:latest";
-
-  try {
-    // Ollama 서버가 실행 중인지 확인
-    const modelsResponse = await axios.get(`${baseUrl}/api/tags`);
-
-    if (modelsResponse.status !== 200) {
-      throw new Error("Ollama 서버가 실행 중이지 않습니다.");
-    }
-
-    // 'nomic-embed-text' 모델이 있는지 확인
-    const models: any[] = modelsResponse.data.models;
-    if (models.findIndex(({ model }) => model === modelName) === -1) {
-      console.log(`'${modelName}' 모델을 다운로드 합니다.`);
-      await ollama.pull({ model: modelName, stream: true });
-    }
-
-    // 모든 조건이 충족되면 embeddings 객체 생성
-    const embeddings = new OllamaEmbeddings({
-      model: modelName,
-      baseUrl: baseUrl,
-    });
-
-    console.log(
-      "Ollama 서버가 실행 중이고, 'nomic-embed-text' 모델이 준비되었습니다.",
-    );
-    return embeddings;
-  } catch (error: any) {
-    console.error("오류 발생:", error.message);
-    return null;
-  }
-}
-
 // 메인 코드 리뷰 함수
 async function codeReview(): Promise<void> {
   try {
@@ -205,7 +163,7 @@ async function codeReview(): Promise<void> {
 
     console.log("gitRootPath", gitRootPath);
 
-    const embeddings = checkOllamaAndModel();
+    const embeddings = checkAndGetOllamaEmbeddingModel();
 
     const loader = new MyDirectoryLoader(
       gitRootPath,
