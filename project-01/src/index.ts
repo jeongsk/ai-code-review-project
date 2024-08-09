@@ -77,7 +77,7 @@ const gitUtils = {
     const [fullContent, changedContent] = await Promise.all([
       fs.readFile(fullPath, "utf-8"),
       this.runCommand(
-        `git diff --cached "${fullPath}" | grep '^[+-]' | grep -v '^[-+][-+][-+]' | sed 's/^[+-]//'`,
+        `git diff --cached "${fullPath}" | grep '^[+-]' | grep -v '^[-+][-+][-+]'`,
       ),
     ]);
     return { fullContent, changedContent };
