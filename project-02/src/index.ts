@@ -1,5 +1,5 @@
-#!/usr/bin/env node
-require("dotenv").config({ path: [".env.local", ".env"], override: true });
+import dotenv from "dotenv";
+dotenv.config({ path: [".env.local", ".env"], override: true });
 
 // 필요한 모듈들을 임포트합니다.
 import chalk from "chalk";
@@ -64,7 +64,7 @@ const gitUtils = {
   // 현재 커밋에서 변경된 파일 목록을 가져오는 함수
   async getChangedFiles(): Promise<string[]> {
     const output = await this.runCommand(
-      "git diff --cached --name-only HEAD --diff-filter=ACM"
+      "git diff --name-only HEAD --diff-filter=ACM"
     );
     return output
       .split("\n")
@@ -88,7 +88,7 @@ const gitUtils = {
     const [fullContent, changedContent] = await Promise.all([
       fs.readFile(fullPath, "utf-8"),
       this.runCommand(
-        `git diff --cached "${fullPath}" | grep '^[+-]' | grep -v '^[-+][-+][-+]''`
+        `git diff "${fullPath}" | grep '^[+-]' | grep -v '^[-+][-+][-+]'`
       ),
     ]);
     return { fullContent, changedContent };
@@ -142,16 +142,18 @@ async function processFile(
   retriever: VectorStoreRetriever
 ): Promise<void> {
   try {
-    console.log(chalk.yellow(`# Processing file: ${file}`));
+    console.log(chalk.yellow(`# Processing file: ${file}`)); //
     const { fullContent, changedContent } = await gitUtils.getFileContent(
       gitRootPath,
       file
     );
     if (fullContent && changedContent) {
       const context = await retriever.invoke(changedContent);
-      console.log("context", context);
+      // console.log("context", context);
       const review = await laasApi.generateAIReview(
-        context + fullContent,
+        `-----\n${context.map(
+          (c) => JSON.stringify(c.metadata) + "\n" + c.pageContent
+        )}\n-----\n\n${fullContent}`,
         changedContent
       );
       console.log(chalk.green(`# AI Code Review for ${file}:`));
@@ -198,31 +200,10 @@ async function codeReview(): Promise<void> {
     const documents = await loader.load();
     console.log(documents.slice(0, 5));
 
-    const textSplitter = new RecursiveCharacterTextSplitter({
+    const textSplitter = RecursiveCharacterTextSplitter.fromLanguage("js", {
       chunkSize: 2000,
       chunkOverlap: 200,
       keepSeparator: true,
-      separators: [
-        "\nenum ",
-        "\ninterface ",
-        "\nnamespace ",
-        "\ntype ",
-        "\nclass ",
-        "\nfunction ",
-        "\nconst ",
-        "\nlet ",
-        "\nvar ",
-        "\nif ",
-        "\nfor ",
-        "\nwhile ",
-        "\nswitch ",
-        "\ncase ",
-        "\ndefault ",
-        "\n\n",
-        "\n",
-        " ",
-        "",
-      ],
     });
 
     const splittedDocuments = await textSplitter.splitDocuments(documents);
@@ -231,10 +212,7 @@ async function codeReview(): Promise<void> {
     vectorStore.addDocuments(splittedDocuments);
 
     const retriever = vectorStore.asRetriever({
-      searchType: "mmr",
-      searchKwargs: {
-        fetchK: 10,
-      },
+      searchType: "similarity",
       k: 5,
     });
 
