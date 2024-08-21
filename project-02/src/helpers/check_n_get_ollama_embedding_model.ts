@@ -49,6 +49,6 @@ export default async function checkAndGetOllamaEmbeddingModel() {
     return cacheBackedEmbeddings;
   } catch (error: any) {
     console.error("오류 발생:", error.message);
-    return null;
+    throw error;
   }
 }
