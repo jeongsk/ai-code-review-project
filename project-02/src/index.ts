@@ -1,5 +1,5 @@
-#!/usr/bin/env node
-require("dotenv").config({ path: [".env.local", ".env"], override: true });
+import dotenv from "dotenv";
+dotenv.config({ path: [".env.local", ".env"], override: true });
 
 // 필요한 모듈들을 임포트합니다.
 import chalk from "chalk";
@@ -12,6 +12,9 @@ import { promisify } from "util";
 import { TextLoader } from "langchain/document_loaders/fs/text";
 import { MyDirectoryLoader } from "./document_loaders/my_directory_loaders";
 import checkAndGetOllamaEmbeddingModel from "./helpers/check_n_get_ollama_embedding_model";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { VectorStoreRetriever } from "@langchain/core/vectorstores";
 
 // exec 함수를 프로미스 기반으로 변환합니다.
 const execAsync = promisify(exec);
@@ -31,7 +34,7 @@ const config = {
 // 환경 변수 검증: API 키가 설정되어 있지 않으면 에러를 출력하고 프로그램을 종료합니다.
 if (!config.LAAS_API_KEY) {
   console.error(
-    chalk.red("Error: LAAS_API_KEY is not set in the environment variables."),
+    chalk.red("Error: LAAS_API_KEY is not set in the environment variables.")
   );
   process.exit(1);
 }
@@ -51,7 +54,9 @@ const gitUtils = {
       return stdout.trim();
     } catch (error: unknown) {
       throw new Error(
-        `Error executing git command: ${error instanceof Error ? error.message : String(error)}`,
+        `Error executing git command: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   },
@@ -59,13 +64,13 @@ const gitUtils = {
   // 현재 커밋에서 변경된 파일 목록을 가져오는 함수
   async getChangedFiles(): Promise<string[]> {
     const output = await this.runCommand(
-      "git diff --cached --name-only HEAD --diff-filter=ACM",
+      "git diff --name-only HEAD --diff-filter=ACM"
     );
     return output
       .split("\n")
       .filter(Boolean)
       .filter((file) =>
-        config.FILE_EXTENSIONS.some((ext) => file.endsWith(ext)),
+        config.FILE_EXTENSIONS.some((ext) => file.endsWith(ext))
       );
   },
 
@@ -77,13 +82,13 @@ const gitUtils = {
   // 특정 파일의 전체 내용과 변경된 내용을 가져오는 함수
   async getFileContent(
     gitRootPath: string,
-    file: string,
+    file: string
   ): Promise<{ fullContent: string; changedContent: string }> {
     const fullPath = path.join(gitRootPath, file);
     const [fullContent, changedContent] = await Promise.all([
       fs.readFile(fullPath, "utf-8"),
       this.runCommand(
-        `git diff --cached "${fullPath}" | grep '^[+-]' | grep -v '^[-+][-+][-+]' | sed 's/^[+-]//'`,
+        `git diff "${fullPath}" | grep '^[+-]' | grep -v '^[-+][-+][-+]'`
       ),
     ]);
     return { fullContent, changedContent };
@@ -95,7 +100,7 @@ const laasApi = {
   // AI 리뷰를 생성하는 함수
   async generateAIReview(
     fullContent: string,
-    changedContent: string,
+    changedContent: string
   ): Promise<string> {
     const body = {
       hash: config.LAAS_PRESET_HASH,
@@ -116,7 +121,7 @@ const laasApi = {
           apiKey: config.LAAS_API_KEY ?? "",
         } as HeadersInit,
         body: JSON.stringify(body),
-      },
+      }
     );
     const data = await response.json();
 
@@ -131,17 +136,25 @@ const laasApi = {
 };
 
 // 개별 파일을 처리하는 함수
-async function processFile(gitRootPath: string, file: string): Promise<void> {
+async function processFile(
+  gitRootPath: string,
+  file: string,
+  retriever: VectorStoreRetriever
+): Promise<void> {
   try {
-    console.log(chalk.yellow(`# Processing file: ${file}`));
+    console.log(chalk.yellow(`# Processing file: ${file}`)); //
     const { fullContent, changedContent } = await gitUtils.getFileContent(
       gitRootPath,
-      file,
+      file
     );
     if (fullContent && changedContent) {
+      const context = await retriever.invoke(changedContent);
+      // console.log("context", context);
       const review = await laasApi.generateAIReview(
-        fullContent,
-        changedContent,
+        `-----\n${context.map(
+          (c) => JSON.stringify(c.metadata) + "\n" + c.pageContent
+        )}\n-----\n\n${fullContent}`,
+        changedContent
       );
       console.log(chalk.green(`# AI Code Review for ${file}:`));
       console.log(review);
@@ -149,8 +162,10 @@ async function processFile(gitRootPath: string, file: string): Promise<void> {
   } catch (error) {
     console.error(
       chalk.red(
-        `Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`,
-      ),
+        `Error processing file ${file}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
     );
   }
 }
@@ -163,7 +178,16 @@ async function codeReview(): Promise<void> {
 
     console.log("gitRootPath", gitRootPath);
 
-    const embeddings = checkAndGetOllamaEmbeddingModel();
+    if (changedFiles.length === 0) {
+      console.log(
+        chalk.yellow(
+          "No changed files matching the specified extensions in the current commit."
+        )
+      );
+      return;
+    }
+
+    const embeddings = await checkAndGetOllamaEmbeddingModel();
 
     const loader = new MyDirectoryLoader(
       gitRootPath,
@@ -171,30 +195,41 @@ async function codeReview(): Promise<void> {
         ".ts": (filePath) => new TextLoader(filePath),
         ".tsx": (filePath) => new TextLoader(filePath),
       },
-      ["**/node_modules", "**/dist", "**/build"],
+      ["**/node_modules", "**/dist", "**/build"]
     );
     const documents = await loader.load();
     console.log(documents.slice(0, 5));
 
-    if (changedFiles.length === 0) {
-      console.log(
-        chalk.yellow(
-          "No changed files matching the specified extensions in the current commit.",
-        ),
-      );
-      return;
-    }
+    const textSplitter = RecursiveCharacterTextSplitter.fromLanguage("js", {
+      chunkSize: 2000,
+      chunkOverlap: 200,
+      keepSeparator: true,
+    });
+
+    const splittedDocuments = await textSplitter.splitDocuments(documents);
+
+    const vectorStore = new MemoryVectorStore(embeddings);
+    vectorStore.addDocuments(splittedDocuments);
+
+    const retriever = vectorStore.asRetriever({
+      searchType: "similarity",
+      k: 5,
+    });
 
     console.log(chalk.blue("Changed files in the current commit:"));
     changedFiles.forEach((file) => console.log(chalk.yellow(`- ${file}`)));
 
     // 파일들을 병렬로 처리합니다.
-    // await Promise.all(changedFiles.map(file => processFile(gitRootPath, file)));
+    await Promise.all(
+      changedFiles.map((file) => processFile(gitRootPath, file, retriever))
+    );
   } catch (error) {
     console.error(
       chalk.red(
-        `Error during code review: ${error instanceof Error ? error.message : String(error)}`,
-      ),
+        `Error during code review: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
     );
   }
 }
