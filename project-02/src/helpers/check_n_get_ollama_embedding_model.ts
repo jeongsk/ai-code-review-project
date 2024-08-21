@@ -11,16 +11,17 @@ const cacheDir = path.join(os.homedir(), ".cache", "embeddings");
 const localFileStore = new LocalFileStore(cacheDir);
 
 export default async function checkAndGetOllamaEmbeddingModel() {
-  const baseUrl = "http://localhost:11434";
+  const baseUrl = "http://127.0.0.1:11434";
   const modelName = "nomic-embed-text:latest";
 
   try {
     // Ollama 서버가 실행 중인지 확인
+    console.log(`${baseUrl}/api/tags`);
     const modelsResponse = await axios.get(`${baseUrl}/api/tags`);
-
     if (modelsResponse.status !== 200) {
       throw new Error("Ollama 서버가 실행 중이지 않습니다.");
     }
+    console.info(`Ollama 서버가 실행 중입니다.`, modelsResponse.data);
 
     // 'nomic-embed-text' 모델이 있는지 확인
     const models: any[] = modelsResponse.data.models;
